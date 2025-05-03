@@ -8,7 +8,7 @@
 
 ## What is this?
 
-This is a [embedded-hal](https://github.com/rust-embedded/embedded-hal) driver
+This is an [embedded-hal](https://github.com/rust-embedded/embedded-hal) driver
 for Bosch's Absolute Orientation Sensor [BNO055](https://ae-bst.resource.bosch.com/media/_tech/media/datasheets/BST-BNO055-DS000.pdf).
 
 It is device-agnostic and uses embedded-hal's `Write`/`WriteRead` (for I2C)
@@ -62,13 +62,11 @@ so be careful that you're not enabling `serde`'s `std` feature by accident (see 
     // let i2c = ...;
     // let delay = ...;
 
-    // Init BNO055 IMU
-    let mut imu = bno055::Bno055::new(i2c);
-
-    imu.init(&mut delay)?;
+    // Init BNO055 IMU with the default address
+    let mut imu = bno055::Bno055::new(false, &mut i2c, &mut delay)?;
 
     // Enable 9-degrees-of-freedom sensor fusion mode with fast magnetometer calibration
-    imu.set_mode(bno055::BNO055OperationMode::NDOF, &mut delay)?;
+    imu.set_mode(bno055::BNO055OperationMode::NDOF, &mut i2c, &mut delay)?;
 
     Ok(imu)
     ```
@@ -76,9 +74,9 @@ so be careful that you're not enabling `serde`'s `std` feature by accident (see 
 3. Read orientation data, quaternion or euler angles (roll, pitch, yaw/heading):
 
     ```rust
-    let quat: mint::Quaternion<f32> = imu.quaternion()?;
+    let quat: mint::Quaternion<f32> = imu.quaternion(&mut i2c)?;
     // or:
-    let euler: mint::EulerAngles<f32, ()> = imu.euler_angles()?;
+    let euler: mint::EulerAngles<f32, ()> = imu.euler_angles(&mut i2c)?;
     ```
 
     >Due to the BNO055 firmware bugs, the Euler angles reading shouldn't be relied on.
@@ -93,11 +91,12 @@ To calibrate the device's sensors for first time:
 ```rust
 use bno055::{BNO055Calibration, BNO055OperationMode, BNO055_CALIB_SIZE};
 
-let bno055 = ...;
+let mut i2c = ...;
+let mut bno055 = ...;
 
 // Enter NDOF (absolute orientation) sensor fusion mode which is also performing
 // a regular sensors calibration
-bno055.set_mode(BNO055OperationMode::NDOF)?;
+bno055.set_mode(BNO055OperationMode::NDOF, &mut i2c)?;
 
 // Wait for device to auto-calibrate.
 // Please perform steps necessary for auto-calibration to kick in.
@@ -123,7 +122,7 @@ mcu.nvram_read(BNO055_CALIB_ADDR, &mut buf, BNO055_CALIB_SIZE)?;
 
 // Apply calibration profile
 let calib = BNO055Calibration::from_buf(buf);
-bno055.set_calibration_profile(calib)?;
+bno055.set_calibration_profile(calib, &mut i2c)?;
 ```
 
 ### Remapping of axes to correspond your mounting
@@ -143,7 +142,7 @@ let remap = AxisRemap::builder()
     .build()
     .expect("Failed to build axis remap config");
 
-bno055.set_axis_remap(remap)?;
+bno055.set_axis_remap(remap, &mut i2c)?;
 ```
 
 Please note that `AxisRemap` builder (and the chip itself) doesn't allow an invalid state to be constructed,
@@ -166,7 +165,7 @@ Example of flipping X and Y axes:
 
 ```rust
 bno055
-    .set_axis_sign(BNO055AxisSign::X_NEGATIVE | bno055::BNO055AxisSign::Y_NEGATIVE)
+    .set_axis_sign(BNO055AxisSign::X_NEGATIVE | bno055::BNO055AxisSign::Y_NEGATIVE, &mut i2c)
     .expect("Unable to communicate");
 ```
 
@@ -187,16 +186,16 @@ bno055
 BNO055 allows to change its I2C address from default `0x29` to alternative `0x28` by setting
 `COM3` pin `LOW`.
 
-To connect to device with an alternative address, enable its use by calling `with_alternative_address()`:
+To connect to device with an alternative address, pass `true` for `alternate_addr` in `new`:
 
 ```rust
 // use default 0x29 address
-let mut bno = bno055::Bno055::new(i2c);
+let mut bno = bno055::Bno055::new(false, &mut i2c, &mut delay)?;
 
 // or:
 
 // use 0x28 address
-let mut bno = bno055::Bno055::new(i2c).with_alternative_address();
+let mut bno = bno055::Bno055::new(true, &mut i2c, &mut delay)?;
 ```
 
 ### Change BNO055 power mode
@@ -204,13 +203,13 @@ let mut bno = bno055::Bno055::new(i2c).with_alternative_address();
 ```rust
 use bno055::{Bno055, BNO055PowerMode};
 // Normal mode
-bno055.set_power_mode(BNO055PowerMode::NORMAL)?;
+bno055.set_power_mode(BNO055PowerMode::NORMAL, &mut i2c)?;
 
 // Low-power mode (only accelerometer being awake)
-bno055.set_power_mode(BNO055PowerMode::LOW_POWER)?;
+bno055.set_power_mode(BNO055PowerMode::LOW_POWER, &mut i2c)?;
 
 // Suspend mode (all sensors and controller are sleeping)
-bno055.set_power_mode(BNO055PowerMode::SUSPEND)?;
+bno055.set_power_mode(BNO055PowerMode::SUSPEND, &mut i2c)?;
 ```
 
 ### Read chip temperature
@@ -218,7 +217,7 @@ bno055.set_power_mode(BNO055PowerMode::SUSPEND)?;
 Temperature is specified in degrees Celsius by default.
 
 ```rust
-let temp: i8 = bno055.temperature()?;
+let temp: i8 = bno055.temperature(&mut i2c)?;
 ```
 
 ## Status
